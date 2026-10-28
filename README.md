@@ -6,7 +6,7 @@ Click a server to switch its configuration. Each client submenu includes reload 
 
 ![Preview](./preview.jpg)
 
-### Installation
+## Installation
 
 The easiest way is to install the app from the bundle:
 
