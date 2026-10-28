@@ -24,6 +24,7 @@ else
   cp target/release/macos-mcp-manager "$bundle/Contents/MacOS/macos-mcp-manager"
 fi
 cp resources/Info.plist "$bundle/Contents/Info.plist"
+cp resources/AppIcon.icns "$bundle/Contents/Resources/AppIcon.icns"
 version="$(cargo metadata --locked --no-deps --format-version 1 | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "macos-mcp-manager"))')"
 # AppKit expects a numeric bundle version, even for a prerelease Cargo version.
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${version%%[-+]*}" "$bundle/Contents/Info.plist"
@@ -32,6 +33,7 @@ cp LICENSE "$bundle/Contents/Resources/LICENSE"
 cp README.md "$bundle/Contents/Resources/README.md"
 codesign --force --deep --sign "${SIGNING_IDENTITY:--}" "$bundle"
 codesign --verify --deep --strict "$bundle"
+touch "$bundle"
 echo "Built $bundle"
 echo "Move it to /Applications to install."
 echo "The default signature is ad hoc; public distribution requires Developer ID signing and notarization."

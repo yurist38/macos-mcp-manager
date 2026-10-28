@@ -38,6 +38,8 @@ open "dist/MCP Manager.app"
 
 Move the bundle to `/Applications` to install it. Packaging signs ad hoc by default for local use. Set `SIGNING_IDENTITY` to a Developer ID identity for signing; notarization is a separate release step. No notarization credentials are required for development.
 
+The bundle includes its own circle-and-list application icon for Finder and installation. Editable artwork is in `resources/AppIcon.svg`; `resources/AppIcon.png` is the 1024px master. After updating the PNG, run `bash scripts/generate-icons.sh` to regenerate the checked-in `AppIcon.icns`. Normal builds copy the icon without requiring extra image tools or dependencies.
+
 Inspect configured names and states without launching the menu:
 
 ```sh
