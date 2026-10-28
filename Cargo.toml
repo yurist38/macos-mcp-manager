@@ -1,0 +1,32 @@
+[package]
+name = "macos-mcp-manager"
+version = "0.1.0"
+edition = "2024"
+description = "A Rust-only macOS menu bar app for switching MCP servers per client"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+fs2 = "0.4"
+jsonc-parser = { version = "0.34", features = ["cst", "serde_json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+toml_edit = "0.25"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["NSImage", "NSMenu", "NSMenuItem", "NSWorkspace"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["NSString", "NSGeometry", "NSURL"] }
+tao = "0.37"
+tray-icon = "0.26"
+
+[profile.release]
+lto = "thin"
+# Avoid malformed proc-macro dylibs on macOS 27 (rust-lang/rust#157750).
+strip = "none"
+
+[[test]]
+name = "native_menu"
+harness = false
+
