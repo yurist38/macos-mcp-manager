@@ -1,7 +1,7 @@
 use macos_mcp_manager::{
     clients::{self, ClientKind, Source},
     manager::Manager,
-    storage::{Change, Pending, State, Store},
+    storage::{self, Change, MAX_CONFIG_SIZE, Pending, State, Store},
 };
 use std::{
     fs,
@@ -133,6 +133,51 @@ fn jsonc_parking_restores_nested_comments_and_secret_values() {
             .iter()
             .all(|s| s.enabled)
     );
+}
+
+#[test]
+fn server_named_like_restore_marker_can_be_disabled_and_restored() {
+    let name = "__mcp_manager_restore_0__";
+    for kind in [
+        ClientKind::ClaudeDesktop,
+        ClientKind::ClaudeCode,
+        ClientKind::VsCode,
+        ClientKind::Cursor,
+    ] {
+        let temp = tempfile::tempdir().unwrap();
+        let key = if kind == ClientKind::VsCode {
+            "servers"
+        } else {
+            "mcpServers"
+        };
+        let original = serde_json::json!({
+            (key): { (name): { "command": "test", "env": { "TOKEN": "preserve-me" } } },
+            "unrelated": true
+        });
+        let manager = manager(temp.path(), kind, &original.to_string());
+        toggle(&manager, name);
+        let disabled = fs::read_to_string(temp.path().join("config.json")).unwrap();
+        assert!(!disabled.contains(name));
+        let state = manager.store.load().unwrap();
+        assert!(
+            !state
+                .parked
+                .values()
+                .next()
+                .unwrap()
+                .definition
+                .contains(name)
+        );
+
+        toggle(&manager, name);
+        let restored = fs::read_to_string(temp.path().join("config.json")).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&restored).unwrap(),
+            original
+        );
+        assert!(manager.store.load().unwrap().parked.is_empty());
+        assert!(manager.snapshot().unwrap().clients[0].servers[0].enabled);
+    }
 }
 
 #[test]
@@ -601,4 +646,102 @@ fn older_undo_state_does_not_lose_disabled_definitions() {
             .unwrap();
     assert!(saved.get("undo").is_none());
     assert!(saved["pending"].is_null());
+}
+
+#[test]
+fn replacement_size_limit_counts_bytes_and_accepts_the_exact_limit() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("config.json");
+    write(&path, "{}");
+    let boundary = format!("{{}}{}", " ".repeat(MAX_CONFIG_SIZE as usize - 2));
+    storage::replace_config(&path, "{}", &boundary).unwrap();
+    assert_eq!(storage::read_config(&path).unwrap(), boundary);
+
+    // Character count is below the limit, but the UTF-8 byte count exceeds it.
+    let oversized = "é".repeat(MAX_CONFIG_SIZE as usize / 2 + 1);
+    assert!(oversized.chars().count() < MAX_CONFIG_SIZE as usize);
+    let error = storage::replace_config(&path, &boundary, &oversized).unwrap_err();
+    assert!(error.to_string().contains("8 MiB"));
+    assert_eq!(storage::read_config(&path).unwrap(), boundary);
+}
+
+#[test]
+fn oversized_toggle_keeps_configuration_readable_and_other_clients_usable() {
+    let temp = tempfile::tempdir().unwrap();
+    let codex = temp.path().join("config.toml");
+    let claude = temp.path().join("config.json");
+    let base = "[mcp_servers.a]\ncommand = 'test'\n#";
+    let before = format!(
+        "{base}{}",
+        "x".repeat(MAX_CONFIG_SIZE as usize - base.len())
+    );
+    write(&codex, &before);
+    write(&claude, "{\"mcpServers\":{\"b\":{\"command\":\"test\"}}}");
+    let sources = vec![
+        Source {
+            kind: ClientKind::Codex,
+            path: codex.clone(),
+        },
+        Source {
+            kind: ClientKind::ClaudeDesktop,
+            path: claude,
+        },
+    ];
+    let state_dir = temp.path().join("state");
+    let manager = Manager::open(sources.clone(), state_dir.clone()).unwrap();
+    let view = manager.snapshot().unwrap().clients.remove(0);
+    let error = manager.toggle(&view, &view.servers[0]).unwrap_err();
+    assert!(error.to_string().contains("8 MiB"));
+    assert_eq!(storage::read_config(&codex).unwrap(), before);
+    assert!(manager.store.load().unwrap().pending.is_none());
+
+    let other = manager.snapshot().unwrap().clients.remove(1);
+    manager.toggle(&other, &other.servers[0]).unwrap();
+    drop(manager);
+    let reopened = Manager::open(sources, state_dir).unwrap();
+    let snapshot = reopened.snapshot().unwrap();
+    assert!(snapshot.clients.iter().all(|view| view.error.is_none()));
+    assert!(snapshot.clients[0].servers[0].enabled);
+    assert!(!snapshot.clients[1].servers[0].enabled);
+}
+
+#[test]
+fn oversized_restore_keeps_disabled_definition_and_allows_retry_after_restart() {
+    let temp = tempfile::tempdir().unwrap();
+    let manager = manager(
+        temp.path(),
+        ClientKind::ClaudeDesktop,
+        "{\"mcpServers\":{\"a\":{\"command\":\"test\"}}}",
+    );
+    toggle(&manager, "a");
+    let parked = manager.store.load().unwrap().parked;
+    let path = temp.path().join("config.json");
+    let base = "{\"mcpServers\":{},\"padding\":\"\"}";
+    let before = format!(
+        "{{\"mcpServers\":{{}},\"padding\":\"{}\"}}",
+        "x".repeat(MAX_CONFIG_SIZE as usize - base.len())
+    );
+    write(&path, &before);
+    let view = manager.snapshot().unwrap().clients.remove(0);
+    let error = manager.toggle(&view, &view.servers[0]).unwrap_err();
+    assert!(error.to_string().contains("8 MiB"));
+    assert_eq!(storage::read_config(&path).unwrap(), before);
+    let state = manager.store.load().unwrap();
+    assert!(state.pending.is_none());
+    assert_eq!(state.parked, parked);
+    drop(manager);
+
+    let reopened = Manager::open(
+        vec![Source {
+            kind: ClientKind::ClaudeDesktop,
+            path: path.clone(),
+        }],
+        temp.path().join("state"),
+    )
+    .unwrap();
+    assert!(!reopened.snapshot().unwrap().clients[0].servers[0].enabled);
+    write(&path, "{\"mcpServers\":{}}");
+    toggle(&reopened, "a");
+    assert!(reopened.snapshot().unwrap().clients[0].servers[0].enabled);
+    assert!(reopened.store.load().unwrap().parked.is_empty());
 }

@@ -321,7 +321,11 @@ pub fn edit(
                 // Splice the raw value into a unique placeholder, preserving comments and all credentials.
                 let marker = (0_u64..)
                     .map(|n| format!("__mcp_manager_restore_{n}__"))
-                    .find(|marker| !contents.contains(marker) && !saved.definition.contains(marker))
+                    .find(|marker| {
+                        !name.contains(marker)
+                            && !contents.contains(marker)
+                            && !saved.definition.contains(marker)
+                    })
                     .expect("unique marker");
                 definitions.append(name, CstInputValue::String(marker.clone()));
                 let result = root.to_string().replacen(

@@ -125,6 +125,9 @@ pub fn read_config(path: &Path) -> Result<String> {
 }
 
 pub fn replace_config(path: &Path, expected: &str, replacement: &str) -> Result<()> {
+    if replacement.len() as u64 > MAX_CONFIG_SIZE {
+        bail!("Replacement configuration exceeds the 8 MiB limit");
+    }
     reject_symlink(path)?;
     let meta = fs::metadata(path)?;
     if meta.nlink() != 1 {
