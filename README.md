@@ -2,24 +2,27 @@
 
 A macOS menu bar app for switching MCP configurations per AI client.
 
+Click a server to switch its configuration. Each client submenu includes reload instructions; it never quits clients, starts MCP servers, or interrupts sessions. It polls the small set of configuration files every two seconds and updates the menu when they change. Unconfigured clients remain visible with an explanatory message.
+
 ![Preview](./preview.jpg)
 
-```text
-MCP
-├── Codex
-│   ├── ✓ github
-│   └──   notion
-├── Claude Desktop
-│   └── ✓ filesystem
-├── Claude Code
-├── VS Code / Copilot
-├── Cursor
-├── GitHub repository
-├── Support project
-└── Quit MCP Manager
-```
+### Installation
 
-Click a server to switch its configuration. Each client submenu includes reload instructions; it never quits clients, starts MCP servers, or interrupts sessions. It polls the small set of configuration files every two seconds and updates the menu when they change. Unconfigured clients remain visible with an explanatory message.
+The easiest way is to install the app from the bundle:
+
+1. Download the latest `*.dmg` from the [Releases](https://github.com/yurist38/macos-mcp-manager/releases) page.
+2. Open it and drag `MCP Manager.app` into `Applications`.
+3. Launch from `Applications` (or Spotlight).
+
+**IMPORTANT:**
+
+If macOS shows `"MCP Manager" is damaged and can't be opened`, the downloaded app was blocked by Gatekeeper quarantine checks.
+
+Then run this command in terminal and then launch the app again:
+
+```sh
+xattr -dr com.apple.quarantine "/Applications/MCP Manager.app"
+```
 
 ## Build and run
 
