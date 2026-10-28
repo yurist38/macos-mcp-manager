@@ -1,0 +1,16 @@
+name: PR Checks
+
+on:
+  - pull_request
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: make lint
+      - run: make test
+      - run: make build
