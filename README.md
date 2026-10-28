@@ -97,6 +97,23 @@ cargo run --locked -- --home /absolute/path/to/fixture-home
 
 `--home` isolates both client paths and application state and ignores `CODEX_HOME`. Populate the fixture with the paths from the table above. Do not point it at your real home when testing fixtures.
 
+## Releases
+
+The **Release** GitHub Actions workflow runs only when manually dispatched. Once the workflow is on the default branch, open **Actions → Release → Run workflow** and select the branch to release. No push, tag, pull request, or schedule automatically publishes a release.
+
+Before each release, bump `version` in `Cargo.toml` and update the root package version in `Cargo.lock`, then commit those changes. The workflow reads that version, runs lint and tests, builds a universal app for Apple Silicon and Intel, and publishes a new `v<version>` tag and GitHub release for the selected commit. Prerelease versions such as `0.2.0-rc.1` are marked as prereleases. Existing releases are not updated automatically; use a new version for each release.
+
+Release assets are `MCP-Manager-<version>-universal-macos.zip`, `MCP-Manager-<version>-universal-macos.dmg`, and `SHA256SUMS`. The DMG includes an Applications shortcut for drag-and-drop installation. [ncipollo/release-action](https://github.com/ncipollo/release-action) manages tag/release creation, release notes, and uploads. Its `immutableCreate` mode uploads assets to a draft before publishing, and upload errors fail the run. Publishing uses the workflow's built-in `GITHUB_TOKEN` with `contents: write`; no personal access token is needed.
+
+The bundle version is populated from Cargo before signing. Release builds use the workflow run number as the internal build number. Downloads are ad hoc signed and **not notarized**; Developer ID signing and Apple notarization are not configured by this workflow.
+
+For a local universal build, first install both Rust targets, then run:
+
+```sh
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+UNIVERSAL=1 make build
+```
+
 ## Design and roadmap
 
 The shared Rust core handles inventory, lossless edits, and durable transactions. The native shell uses `tray-icon`/`muda` for AppKit menus and `tao` only for the macOS event loop. A worker thread performs filesystem operations; the main thread owns native UI objects. No frontend runtime is bundled.

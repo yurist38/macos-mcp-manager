@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the selected commit
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Rust and both macOS targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Read the release version
+        id: version
+        run: |
+          version="$(cargo metadata --locked --no-deps --format-version 1 | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "macos-mcp-manager"))')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$([[ "${version%%+*}" == *-* ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Lint and test
+        run: make lint test
+
+      - name: Build the universal app
+        env:
+          UNIVERSAL: "1"
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: make build
+
+      - name: Package release downloads
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          archive="MCP-Manager-${RELEASE_VERSION}-universal-macos.zip"
+          disk_image="MCP-Manager-${RELEASE_VERSION}-universal-macos.dmg"
+          ditto -c -k --sequesterRsrc --keepParent "dist/MCP Manager.app" "dist/$archive"
+          image_root="$RUNNER_TEMP/mcp-manager-dmg"
+          mkdir -p "$image_root"
+          ditto "dist/MCP Manager.app" "$image_root/MCP Manager.app"
+          ln -s /Applications "$image_root/Applications"
+          hdiutil create -volname "MCP Manager" -srcfolder "$image_root" -format UDZO "dist/$disk_image"
+          cd dist
+          shasum -a 256 "$archive" "$disk_image" > SHA256SUMS
+          shasum -a 256 --check SHA256SUMS
+
+      - name: Publish release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: v${{ steps.version.outputs.version }}
+          commit: ${{ github.sha }}
+          name: MCP Manager ${{ steps.version.outputs.version }}
+          prerelease: ${{ steps.version.outputs.prerelease }}
+          generateReleaseNotes: true
+          immutableCreate: true
+          artifactErrorsFailBuild: true
+          artifacts: dist/*.zip,dist/*.dmg,dist/SHA256SUMS
+          body: |
+            Universal macOS app for Apple Silicon and Intel. Requires macOS 14 or later.
+            Download the DMG or ZIP; SHA256SUMS contains checksums for both.
+            Builds are ad hoc signed; Apple notarization is not configured.
