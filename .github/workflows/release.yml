@@ -24,6 +24,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Install Rust and both macOS targets
         uses: dtolnay/rust-toolchain@stable
@@ -31,12 +32,10 @@ jobs:
           components: rustfmt, clippy
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
-      - name: Read the release version
+      - name: Prepare the next patch version
         id: version
         run: |
-          version="$(cargo metadata --locked --no-deps --format-version 1 | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "macos-mcp-manager"))')"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$([[ "${version%%+*}" == *-* ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          python3 scripts/bump-release.py >> "$GITHUB_OUTPUT"
 
       - name: Lint and test
         run: make lint test
